@@ -1,0 +1,43 @@
+WITH category_summary AS (
+    SELECT
+        c.category_name,
+        COUNT(DISTINCT o.order_id) AS total_orders,
+        SUM(oi.quantity * oi.price) AS total_revenue
+    FROM
+        orders o
+        INNER JOIN order_items oi ON o.order_id = oi.order_id
+        INNER JOIN products p ON oi.product_id = p.product_id
+        INNER JOIN categories c ON p.category_id = c.category_id
+    WHERE
+        o.order_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 3 MONTH) AND CURDATE()
+    GROUP BY
+        c.category_name
+),
+rolling_avg_sales AS (
+    SELECT 
+        t_date AS transaction_date,
+        SUM(t_amt) OVER (ORDER BY t_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) / 
+        SUM(t_count) OVER (ORDER BY t_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS rol_avg
+    FROM
+        (SELECT 
+            transaction_time::date AS t_date,
+            SUM(transaction_amount) AS t_amt,
+            COUNT(*) AS t_count
+        FROM
+            transactions
+        GROUP BY
+            transaction_time::date
+        ) AS t1
+)
+SELECT
+    rs.transaction_date,
+    rs.rol_avg,
+    cs.category_name,
+    cs.total_orders,
+    cs.total_revenue
+FROM
+    rolling_avg_sales rs
+JOIN
+    category_summary cs ON rs.transaction_date = cs.transaction_date
+ORDER BY
+    rs.transaction_date;
